@@ -21,5 +21,21 @@
 
  *)
 
+(* let string_rev (s : string) : string =
+  let res = String.sub s (String.length s - 1) 1 in
+  let rec go i =
+    if i >= 0 then
+      res ^ (String.sub s (String.length s - i) 1)
+    else
+      ""
+    in
+    go (String.length s - 2) *)
 let string_rev (s : string) : string =
-  assert false (* REMOVE THIS LINE AND FILL IN YOUR SOLUTION *)
+  let rec go i =
+    if i >= 0 then
+      (String.sub s i 1) ^ go (i - 1)
+    else
+      ""
+  in
+  go (String.length s - 1)
+

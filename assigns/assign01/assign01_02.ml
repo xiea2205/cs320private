@@ -15,4 +15,13 @@
  *)
 
 let is_perfect (n : int) : bool =
-  assert false (* REMOVE THIS LINE AND FILL IN YOUR SOLUTION *)
+  let rec go i sum = 
+    if i <= int_of_float (sqrt (float_of_int n)) then
+      if n mod i = 0 then
+        go (i + 1) (sum + i + n / i)
+      else
+        go (i + 1) sum
+    else
+      sum - n = n
+  in
+  go 1 0

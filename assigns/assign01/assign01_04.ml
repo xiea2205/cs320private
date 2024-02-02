@@ -16,5 +16,20 @@
 
  *)
 
-let taxicab (n : int) : int =
-  assert false (* REMOVE THIS LINE AND FILL IN YOUR SOLUTION *)
+ let taxicab (n : int) : int =
+  let is_perfect_cube (n1 : int) : bool =
+    let cube_root = int_of_float (Float.round (float_of_int n1 ** (1.0 /. 3.0))) in
+    (* Printf.printf "cube_root: %d, n1: %d\n" cube_root n1;   *)
+    cube_root * cube_root * cube_root = n1  
+  in
+  let rec go c i =
+    if i*i*i > n/2 then 
+      c
+    else
+      if (is_perfect_cube (n - i*i*i)) then
+        go (c+1) (i+1)
+      else
+        go c (i+1)
+  in
+  go 0 1
+    

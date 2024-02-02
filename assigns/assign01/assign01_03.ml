@@ -24,4 +24,10 @@
  *)
 
 let fast_fib (n : int) : int =
-  assert false (* REMOVE THIS LINE AND FILL IN YOUR SOLUTION *)
+  let rec go c f1 f2 = 
+    if c = n then
+      f1
+    else
+      go (c + 1) (f2) (f1+f2)
+    in
+  go 0 1 1

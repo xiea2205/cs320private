@@ -39,3 +39,5 @@ let py_trip_hyp n =
       && is_perfect_square (n - i * i)
       || go (i - 1)
   in go (n - 1)
+
+let _ = assert (py_trip_hyp 5)

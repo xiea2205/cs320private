@@ -37,5 +37,22 @@
 
  *)
 
-let block_text (s : string) (min_width : int) (max_width : int) : string =
-  assert false (* REMOVE THIS LINE AND FILL IN YOUR SOLUTION *)
+ let block_text (s : string) (min_width : int) (max_width : int) : string =
+  let rec go2 i j =
+    if i >= String.length s then
+      ""
+    else if (i + 1) mod j = 0 then
+      (String.sub s i 1) ^ "\n" ^ go2 (i + 1) j
+    else
+      (String.sub s i 1) ^ go2 (i + 1) j
+  in
+  let rec go1 w =
+    if w >= min_width then
+      if (String.length s) mod w >= min_width then
+        go2 0 w
+      else
+        go1 (w-1)
+    else
+      go2 0 max_width
+  in
+  go1 max_width

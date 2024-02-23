@@ -84,14 +84,24 @@ let rec map2 (f : 'a -> 'b -> 'c) (l : 'a list) (r : 'b list) : 'c list =
   | x::xs, y::ys -> f x y :: map2 f xs ys
 
 let consecutives (len : int) (l : 'a list) : 'a list list =
-  let rec take n l = match n, l with
-    | 0, _ | _, [] -> []
-    | n, x::xs -> x :: take (n-1) xs
+  let rec aux acc sublist remaining =
+    match remaining with
+    | [] when sublist <> [] -> List.rev (sublist :: acc)  (* Handle remaining sublist *)
+    | [] -> List.rev acc
+    | _ ->
+      let new_sublist, rest = take_and_drop len remaining in
+      if List.length new_sublist < len then aux acc new_sublist []
+      else aux (new_sublist :: acc) (List.tl new_sublist) (List.tl remaining)
+  and take_and_drop n l =
+    let rec take n acc l =
+      if n = 0 then List.rev acc, l
+      else match l with
+           | [] -> List.rev acc, l
+           | x::xs -> take (n-1) (x::acc) xs
+    in
+    take n [] l
   in
-  let rec aux acc l =
-    if List.length l < len then acc
-    else aux (acc @ [take len l]) (List.tl l)
-  in aux [] l
+  aux [] [] l
 
 let list_conv
     (f : 'a list -> 'b list -> 'c)

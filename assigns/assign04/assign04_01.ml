@@ -29,4 +29,12 @@
 *)
 
 let apply_cycle (funcs : ('a -> 'a) list) (n : int) (x : 'a) : 'a =
-  assert false (* TODO *)
+  let rec apply funcs n x count =
+    match funcs, n with
+    | _, n when n <= 0 -> x
+    | [], _ -> x (* Fallback for empty function list, though this case is handled by the outer condition *)
+    | fs, _ ->
+      let func = List.nth fs (count mod List.length fs) in
+      apply fs (n - 1) (func x) (count + 1)
+  in
+  apply funcs (max n 0) x 0  

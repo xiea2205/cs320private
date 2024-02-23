@@ -53,4 +53,20 @@ let walks
     (g : 'a -> 'a -> bool)
     (len : int)
     (paths_starts : (('a -> 'a) * 'a) list) : 'a list =
-  assert false (* TODO *)
+    let rec generate_path p x len =
+      if len <= 0 then [x]
+      else x :: generate_path p (p x) (len - 1)
+    in
+    let is_valid_path path =
+      let rec check_edges = function
+        | [] | [_] -> true
+        | x :: (y :: _ as rest) -> g x y && check_edges rest
+      in
+      check_edges path
+    in
+    paths_starts
+    |> List.map (fun (p, start) -> generate_path p start (max 0 len))
+    |> List.map (fun path -> (path, is_valid_path path))
+    |> List.filter (fun (_, valid) -> valid)
+    |> List.map (fun (path, _) -> List.nth path (max 0 (List.length path - 1)))
+  

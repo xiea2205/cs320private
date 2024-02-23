@@ -79,10 +79,19 @@
 *)
 
 let rec map2 (f : 'a -> 'b -> 'c) (l : 'a list) (r : 'b list) : 'c list =
-  assert false (* TODO *)
+  match l, r with
+  | [], _ | _, [] -> []
+  | x::xs, y::ys -> f x y :: map2 f xs ys
 
 let consecutives (len : int) (l : 'a list) : 'a list list =
-  assert false (* TODO *)
+  let rec take n l = match n, l with
+    | 0, _ | _, [] -> []
+    | n, x::xs -> x :: take (n-1) xs
+  in
+  let rec aux acc l =
+    if List.length l < len then acc
+    else aux (acc @ [take len l]) (List.tl l)
+  in aux [] l
 
 let list_conv
     (f : 'a list -> 'b list -> 'c)
@@ -91,7 +100,7 @@ let list_conv
   List.map (f l) (consecutives (List.length l) r)
 
 let poly_mult_helper (u : int list) (v : int list) : int =
-  assert false (* TODO *)
+  List.fold_left (+) 0 (map2 ( * ) u v)
 
 let poly_mult (p : int list) (q : int list) : int list =
   let padding = List.init (List.length p - 1) (fun _ -> 0) in

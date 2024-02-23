@@ -78,30 +78,30 @@
    (* ( 1 + 2x + 3x^2 ) ( 4 + 5x ) = 4 + 13x + 22x^2 + 15x^3 *)
 *)
 
-let rec map2 (f : 'a -> 'b -> 'c) (l : 'a list) (r : 'b list) : 'c list =
-  match l, r with
+let rec map2 f l r = match l, r with
   | [], _ | _, [] -> []
   | x::xs, y::ys -> f x y :: map2 f xs ys
 
+let rec take n l = match n, l with
+  | _, [] | 0, _ -> []
+  | n, x::xs when n > 0 -> x :: take (n-1) xs
+  | _ -> failwith "Negative argument"
+
+let rec drop n l = match n, l with
+  | _, [] -> []
+  | 0, _ -> l
+  | n, _::xs when n > 0 -> drop (n-1) xs
+  | _ -> failwith "Negative argument"
 let consecutives (len : int) (l : 'a list) : 'a list list =
-  let rec aux acc sublist remaining =
-    match remaining with
-    | [] when sublist <> [] -> List.rev (sublist :: acc)  (* Handle remaining sublist *)
-    | [] -> List.rev acc
-    | _ ->
-      let new_sublist, rest = take_and_drop len remaining in
-      if List.length new_sublist < len then aux acc new_sublist []
-      else aux (new_sublist :: acc) (List.tl new_sublist) (List.tl remaining)
-  and take_and_drop n l =
-    let rec take n acc l =
-      if n = 0 then List.rev acc, l
-      else match l with
-           | [] -> List.rev acc, l
-           | x::xs -> take (n-1) (x::acc) xs
-    in
-    take n [] l
-  in
-  aux [] [] l
+  let rec aux len l acc =
+    if len <= 0 then acc
+    else match l with
+      | [] -> acc
+      | _::_ ->
+        let taken = take len l in
+        if List.length taken < len then acc
+        else aux len (drop 1 l) (taken::acc)
+  in List.rev (aux len l [])
 
 let list_conv
     (f : 'a list -> 'b list -> 'c)
@@ -110,7 +110,8 @@ let list_conv
   List.map (f l) (consecutives (List.length l) r)
 
 let poly_mult_helper (u : int list) (v : int list) : int =
-  List.fold_left (+) 0 (map2 ( * ) u v)
+  let multiplied = map2 (fun x y -> x * y) u v in
+  List.fold_left (+) 0 multiplied
 
 let poly_mult (p : int list) (q : int list) : int list =
   let padding = List.init (List.length p - 1) (fun _ -> 0) in

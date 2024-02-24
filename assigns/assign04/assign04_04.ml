@@ -99,7 +99,7 @@ let consecutives (len : int) (l : 'a list) : 'a list list =
       | [] -> acc
       | _::_ ->
         let taken = take len l in
-        if List.length taken <= len then acc
+        if List.length taken <= len then (taken::acc)
         else aux len (drop 1 l) (taken::acc)
   in List.rev (aux len l [])
 

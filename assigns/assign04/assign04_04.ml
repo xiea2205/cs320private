@@ -94,12 +94,12 @@ let rec drop n l = match n, l with
   | _ -> failwith "Negative argument"
 let consecutives (len : int) (l : 'a list) : 'a list list =
   let rec aux len l acc =
-    if len <= 0 then acc
+    if len <= 0 then [[]]
     else match l with
       | [] -> acc
       | _::_ ->
         let taken = take len l in
-        if List.length taken < len then acc
+        if List.length taken <= len then acc
         else aux len (drop 1 l) (taken::acc)
   in List.rev (aux len l [])
 

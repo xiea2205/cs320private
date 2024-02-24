@@ -93,15 +93,12 @@ let rec drop n l = match n, l with
   | n, _::xs when n > 0 -> drop (n-1) xs
   | _ -> failwith "Negative argument"
 let consecutives (len : int) (l : 'a list) : 'a list list =
-  let rec aux len l acc =
-    if (len <= 0 || (List.length l) <= 0) then [[]]
-    else match l with
-      | [] -> acc
-      | _::_ ->
-        let taken = take len l in
-        if List.length taken < len then acc
-        else aux len (drop 1 l) (taken::acc)
-  in List.rev (aux len l [])
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | l as lst ->
+      if List.length lst < len then List.rev acc
+      else aux (take len lst :: acc) (List.tl lst)
+  in aux [] l
 
 let list_conv
     (f : 'a list -> 'b list -> 'c)
@@ -110,10 +107,12 @@ let list_conv
   List.map (f l) (consecutives (List.length l) r)
 
 let poly_mult_helper (u : int list) (v : int list) : int =
-  let multiplied = map2 (fun x y -> x * y) u v in
-  List.fold_left (+) 0 multiplied
+  List.fold_left (+) 0 (List.map2 ( * ) u v)
 
 let poly_mult (p : int list) (q : int list) : int list =
-  let padding = List.init (List.length p - 1) (fun _ -> 0) in
-  let padded_q = padding @ q @ padding in
+  let deg_p = List.length p - 1 in
+  let deg_q = List.length q - 1 in
+  let result_length = deg_p + deg_q + 1 in
+  let padding = List.init result_length (fun _ -> 0) in
+  let padded_q = q @ padding in
   list_conv poly_mult_helper p padded_q

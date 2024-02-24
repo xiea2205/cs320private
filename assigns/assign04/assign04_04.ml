@@ -110,9 +110,6 @@ let poly_mult_helper (u : int list) (v : int list) : int =
   List.fold_left (+) 0 (List.map2 ( * ) u v)
 
 let poly_mult (p : int list) (q : int list) : int list =
-  let deg_p = List.length p - 1 in
-  let deg_q = List.length q - 1 in
-  let result_length = deg_p + deg_q + 1 in
-  let padding = List.init result_length (fun _ -> 0) in
-  let padded_q = q @ padding in
+  let padding = List.init (List.length p - 1) (fun _ -> 0) in
+  let padded_q = padding @ q @ padding in
   list_conv poly_mult_helper p padded_q

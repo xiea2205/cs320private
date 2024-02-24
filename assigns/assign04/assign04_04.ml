@@ -78,14 +78,11 @@
    (* ( 1 + 2x + 3x^2 ) ( 4 + 5x ) = 4 + 13x + 22x^2 + 15x^3 *)
 *)
 
-(* let rec map2 f l r = match l, r with
+let rec map2 f l r = match l, r with
   | [], _ | _, [] -> []
-  | x::xs, y::ys -> f x y :: map2 f xs ys *)
-let rec map2 f l r =
-  match l, r with
-  | [], _ | _, [] -> []
-  | lh :: lt, rh :: rt -> f lh rh :: map2 f lt rt  
-(* let rec take n l = match n, l with
+  | x::xs, y::ys -> f x y :: map2 f xs ys
+
+let rec take n l = match n, l with
   | _, [] | 0, _ -> []
   | n, x::xs when n > 0 -> x :: take (n-1) xs
   | _ -> failwith "Negative argument"
@@ -94,54 +91,27 @@ let rec drop n l = match n, l with
   | _, [] -> []
   | 0, _ -> l
   | n, _::xs when n > 0 -> drop (n-1) xs
-  | _ -> failwith "Negative argument" *)
-(* let consecutives (len : int) (l : 'a list) : 'a list list =
+  | _ -> failwith "Negative argument"
+let consecutives (len : int) (l : 'a list) : 'a list list =
   let rec aux len l acc =
     if len <= 0 then [[]]
     else match l with
       | [] -> acc
       | _::_ ->
         let taken = take len l in
-        if List.length taken <= len then (taken::acc)
+        if List.length taken < len then acc
         else aux len (drop 1 l) (taken::acc)
-  in List.rev (aux len l []) *)
-let rec take n list =
-  if n <= 0 then [] else
-    match list with
-    | [] -> []
-    | x :: xs -> x :: take (n - 1) xs
+  in List.rev (aux len l [])
 
-let rec drop n list =
-  if n <= 0 then list else
-    match list with
-    | [] -> []
-    | _ :: xs -> drop (n - 1) xs
-
-let consecutives len list =
-  let rec aux n l acc =
-    if n > 0 then
-      let taken = take len l in
-      if List.length taken < len then acc else
-        aux (n - 1) (drop 1 l) (taken :: acc)
-    else acc
-  in List.rev (aux (List.length list) list [])
-  
 let list_conv
     (f : 'a list -> 'b list -> 'c)
     (l : 'a list)
     (r : 'b list) : 'c list =
   List.map (f l) (consecutives (List.length l) r)
 
-(* let poly_mult_helper (u : int list) (v : int list) : int =
+let poly_mult_helper (u : int list) (v : int list) : int =
   let multiplied = map2 (fun x y -> x * y) u v in
-  List.fold_left (+) 0 multiplied *)
-
-let poly_mult_helper u v =
-  let rec dot_product a b acc = match a, b with
-    | ah :: at, bh :: bt -> dot_product at bt (acc + ah * bh)
-    | _ -> acc
-  in dot_product u v 0
-  
+  List.fold_left (+) 0 multiplied
 
 let poly_mult (p : int list) (q : int list) : int list =
   let padding = List.init (List.length p - 1) (fun _ -> 0) in

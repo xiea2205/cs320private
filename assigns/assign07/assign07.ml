@@ -106,7 +106,22 @@ type token
   | EOFT            (* end of file *)
 
 let next_token (cs : char list) : (token * char list) option =
-  assert false (* TODO *)
+  let (prefix, rest) = span is_blank cs in
+  match rest with
+  | [] -> Some (EOFT, [])
+  | '=' :: ':' :: ':' :: '=' :: tl -> Some (EqT, tl)
+  | '.' :: tl -> Some (PdT, tl)
+  | '<' :: _ -> 
+    let (inner, after) = span (fun c -> c <> '>') rest in
+    (match after with
+     | '>' :: tl -> 
+        if List.for_all is_alpha inner then Some (NtmT (implode inner), tl)
+        else None
+     | _ -> None)
+  | _ ->
+    let (word, remainder) = span is_alphanum rest in
+    if word = [] then None 
+    else Some (TmT (implode word), remainder)
 
 let tokenize (s : string) : (token list) option =
   let rec go cs =
@@ -176,9 +191,11 @@ type sentform = symbol list
 type rule = string * sentform
 type grammar = rule list
 
-let expand_leftmost ((nt, sf) : rule) (s : sentform) : sentform =
-  assert false (* TODO *)
-
+let rec expand_leftmost ((nt, sf) : rule) (s : sentform) : sentform =
+  match s with
+  | [] -> []
+  | NT x :: tail when x = nt -> sf @ tail
+  | head :: tail -> head :: expand_leftmost (nt, sf) tail
 (* <a> ::= a<a>. *)
 let r = "a", [T "a"; NT "a"]
 
@@ -217,13 +234,31 @@ let _ = assert (expand_leftmost r [NT "a"; T "b"; NT "a"] = [T "a"; NT "a"; T "b
 *)
 
 let rec parse_sentform (ts : token list) : (sentform * token list) option =
-  assert false (* TODO *)
+  match ts with
+  | (NtmT id) :: tail -> 
+      (match parse_sentform tail with
+       | Some (sf, rest) -> Some (NT id :: sf, rest)
+       | None -> Some ([NT id], tail))
+  | (TmT id) :: tail -> 
+      (match parse_sentform tail with
+       | Some (sf, rest) -> Some (T id :: sf, rest)
+       | None -> Some ([T id], tail))
+  | _ -> None
 
 let parse_rule (ts : token list) : (rule * token list) option =
-  assert false (* TODO *)
+  match ts with
+  | NtmT nt :: EqT :: tail -> 
+      (match parse_sentform tail with
+       | Some (sf, PdT :: rest) -> Some ((nt, sf), rest)
+       | _ -> None)
+  | _ -> None
 
 let rec parse_grammar (ts : token list) : grammar * token list =
-  assert false (* TODO *)
+  match parse_rule ts with
+  | Some (rule, rest) -> 
+      let (g, remaining) = parse_grammar rest in
+      (rule :: g, remaining)
+  | None -> ([], ts)
 
 let parse_and_check (s : string) : grammar option =
   match tokenize s with

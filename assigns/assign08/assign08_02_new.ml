@@ -235,6 +235,8 @@ type command
   | Sub
   | Mul
   | Div
+  | Store
+  | Recall
 
 (* Parsing floats
 
@@ -327,6 +329,8 @@ let parse_command : command parser = (* TODO *)
     (keyword "div" >| Div) <|>
     (keyword "pop" >| Pop) <|>
     (keyword "quit" >| Quit) <|>
+    (keyword "store" >| Store) <|>
+    (keyword "recall" >| Recall) <|>
     (parse_float << ws >|= fun x -> Push x)
   in ws >> p
 
@@ -380,16 +384,18 @@ let _ = assert (test = out)
    You may return anything on the Quit command.
 
 *)
-let run_command (cmd : command) (stk : float list) : float list = (* TODO *)
+let run_command (cmd : command) (mem, stk : float * float list) : float * float list =
   match cmd, stk with
-  | Quit, _ -> []
-  | Push x, stk -> x :: stk
-  | Pop, x :: rest -> rest
-  | Add, x :: y :: rest -> x +. y :: rest
-  | Sub, x :: y :: rest -> x -. y :: rest
-  | Mul, x :: y :: rest -> x *. y :: rest
-  | Div, x :: y :: rest -> x /. y :: rest
-  | _ -> stk
+  | Quit, _ -> mem, []
+  | Push x, stk -> mem, x :: stk
+  | Pop, x :: rest -> mem, rest
+  | Add, x :: y :: rest -> mem, (x +. y) :: rest
+  | Sub, x :: y :: rest -> mem, (x -. y) :: rest
+  | Mul, x :: y :: rest -> mem, (x *. y) :: rest
+  | Div, x :: y :: rest -> mem, (x /. y) :: rest
+  | Store, x :: _ -> x, stk
+  | Recall, _ -> mem, mem :: stk
+  | _, _ -> mem, stk
 
 (* TEST CASES *)
 
@@ -423,14 +429,17 @@ let rec print_stack (stk : float list) : unit =
   go stk ;
   print_endline "========\n"
 
-let rec repl stk : unit =
-  let continue stk = print_stack stk ; repl stk in
-  let input = print_string "RPN> " ; read_line () in
-  match parse parse_command input with
-  | Some Quit -> print_endline "Goodbye."
-  | Some cmd -> continue (run_command cmd stk)
-  | _ ->
-    print_endline "Could not parse. Try again." ;
-    continue stk
+  let rec repl (mem, stk) : unit =
+    let continue (mem, stk) = print_stack stk ; repl (mem, stk) in
+    let input = print_string "RPN> " ; read_line () in
+    match parse parse_command input with
+    | Some Quit -> print_endline "Goodbye."
+    | Some cmd ->
+      let mem, stk = run_command cmd (mem, stk) in
+      continue (mem, stk)
+    | _ ->
+      print_endline "Could not parse. Try again." ;
+      continue (mem, stk)
+  
 
 (* let main = repl [] *)

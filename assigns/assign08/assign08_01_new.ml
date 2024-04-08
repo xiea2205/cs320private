@@ -186,7 +186,8 @@ type grammars = grammar list
    after a grammar identifier.
 *)
 let parse_g_ident : string parser = (* TODO *)
-  assert false
+  let upper = many1 (satisfy is_upper_case) in
+  upper >|= implode
 
 (* A terminal symbol is ANY sequence of characters between two single
    quotes, e.g.,
@@ -201,8 +202,9 @@ let parse_g_ident : string parser = (* TODO *)
 
 *)
 let parse_term : symbol parser = (* TODO *)
-  assert false
-
+  (char '\'') >>
+  (many (satisfy ((<>) '\'')) >|= implode) <<
+  (char '\'') >|= fun x -> T x
 (* A nonterminal symbols is given by the following grammar:
 
    <nonterm>    ::= [<g-ident>'.']'<'<nonterm-id>'>'
@@ -222,9 +224,15 @@ let parse_term : symbol parser = (* TODO *)
    after a nonterminal symbol.
 
 *)
-let parse_nonterm : symbol parser = (* TODO *)
-  assert false
-
+let parse_nonterm : symbol parser =
+let lower = many1 (satisfy is_lower_case) in
+let rest = map2 (fun x xs -> x :: xs) (char '-') lower in
+let cs = map2 (fun xs xss -> List.concat (xs :: xss)) lower (many rest) in
+optional (parse_g_ident << char '.') >>= fun prefix ->
+  char '<' >> cs << char '>' >|= fun cs -> 
+    match prefix with 
+      | Some pref -> NTRef(pref, implode cs)
+      | None -> NT(implode cs)
 (* `parse_symbol` parses either a terminal, a nonterminal symbol or a
    nonterminal reference.
 
@@ -234,8 +242,8 @@ let parse_nonterm : symbol parser = (* TODO *)
    after symbols.
 
 *)
-let parse_symbol : symbol parser = (* TODO *)
-  assert false
+let parse_symbol : symbol parser =
+  parse_term <|> parse_nonterm
 
 (* A complex symbol is given by the following grammar:
 
@@ -253,7 +261,11 @@ let parse_symbol : symbol parser = (* TODO *)
 
 *)
 let parse_symbol_complex : symbol_complex parser =
-  assert false
+  let symbols = (many1 (parse_symbol << ws)) <|> (keyword "EMPTY" >| []) in
+  let alt = map2 (fun x xs -> x :: xs) symbols (many ((keyword "|") >> symbols)) in
+  (parse_symbol  >|= fun s -> Sym(s)) <|> 
+  (keyword "{" >> alt << keyword "}" >|= fun cs -> Rep(cs)) <|>
+  (keyword "[" >> alt << keyword "]" >|= fun cs -> Opt(cs))
 
 (* A sentential form is given by the following grammar:
 
@@ -267,8 +279,8 @@ let parse_symbol_complex : symbol_complex parser =
    sentential form.
 
 *)
-let parse_sentform : sentform parser = (* TODO *)
-  assert false
+let parse_sentform : sentform parser =
+  (many1 (parse_symbol_complex << ws)) <|> (keyword "EMPTY" >| [])
 
 (* A rule is given by the following grammar:
 
@@ -282,8 +294,17 @@ let parse_sentform : sentform parser = (* TODO *)
    rule, but you SHOULD consume whitespace after a rule.
 
 *)
-let parse_rule : rule list parser = (* TODO *)
-  assert false
+let parse_rule : rule list parser =
+  let alt = map2 (fun x xs -> x :: xs) parse_sentform (many ((keyword "|") >> parse_sentform)) in
+  let nident_of s =
+    match s with 
+      | T _ -> assert false
+      | NT id -> id
+      | NTRef (_, id) -> id in 
+  map2
+    (fun nt sfs -> List.map (fun sf -> nt, sf) sfs)
+    (keyword "RULE" >> parse_nonterm << ws << keyword "::=" >|= nident_of)
+    alt
 
 (* A grammar is given by the following grammar:
 
@@ -292,8 +313,13 @@ let parse_rule : rule list parser = (* TODO *)
    For testing purposes you SHOULD NOT consume whitespace before a
    grammar, but you SHOULD consume whitespace and after a grammar.
 *)
-let parse_grammar : grammar parser = (* TODO *)
-  assert false
+let parse_grammar : grammar parser =
+  keyword "BEGIN" >> 
+  map2 
+    (fun g rs -> g, rs)
+    (parse_g_ident << ws)
+    (many parse_rule >|= List.concat)
+  << keyword "END"
 
 (* A collection grammars is given by the following grammar:
 
@@ -303,10 +329,10 @@ let parse_grammar : grammar parser = (* TODO *)
    after a collection of grammars.
 
 *)
-let parse_grammars : grammars parser = (* TODO *)
-  assert false
+let parse_grammars : grammars parser = 
+  ws >> many parse_grammar 
+  (* >|= List.concat *)
 
-(* UNCOMMENT AS YOU COMPLETE THE ASSIGNMENT
 (* TEST CASES *)
 
 (* parse_term *)
@@ -387,6 +413,10 @@ let _ = assert (test = out)
 
 let test = parse parse_symbol_complex "TEST.<test-two>"
 let out = Some (Sym (NTRef ("TEST", "test-two")))
+let _ = assert (test = out)
+
+let test = parse parse_symbol_complex "{ <one> }"
+let out = Some (Rep [[NT "one"]])
 let _ = assert (test = out)
 
 let test = parse parse_symbol_complex "{ <one> <two> | 'three' }"
@@ -598,4 +628,4 @@ let out = Some
 let _ = assert (test = out)
 
 (* END OF TEST CASES *)
-*)
+

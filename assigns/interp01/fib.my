@@ -1,1 +1,15 @@
-def FIB ;
+def FIB
+  dup 0 = ? drop 0;
+  dup 1 = ? drop 1;
+  dup 1 < ?
+    dup
+    swap
+    +
+    swap
+    drop
+    swap
+    #FIB
+  ;
+;
+6 #FIB .
+

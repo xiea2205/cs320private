@@ -120,8 +120,10 @@ type command
   | Num of int             (* num *)
 and program = command list
 
-let parse_ident = fail (* TODO *)
-
+let parse_ident =  (* TODO *)
+  many1 (satisfy is_upper_case) >|= implode
+let parse_num = 
+  many1 (satisfy is_digit) >|= implode >|= int_of_string
 (* You are not required to used this but it may be useful in
    understanding how to use `rec_parser` *)
 let rec parse_com () =
@@ -130,21 +132,55 @@ let rec parse_com () =
       (fun id p -> Def (id, p))
       (keyword "def" >> parse_ident << ws)
       (parse_prog_rec () << char ';')
-  in parse_def <|> fail (* TODO *)
+  in let parse_simple_command = choice [
+    keyword "drop" >> pure Drop;
+    keyword "swap" >> pure Swap;
+    keyword "dup" >> pure Dup;
+    keyword "." >> pure Trace;
+    keyword "+" >> pure Add;
+    keyword "-" >> pure Sub;
+    keyword "*" >> pure Mul;
+    keyword "/" >> pure Div;
+    keyword "<" >> pure Lt;
+    keyword "=" >> pure Eq;
+  ] in
+  let parse_bind = 
+    (keyword "|>" >> parse_ident) >>= fun id -> pure (Bind id) in
+  let parse_call = 
+    (keyword "#" >> parse_ident) >>= fun id -> pure (Call id) in
+  let parse_if =
+    keyword "?" >> parse_prog_rec () >>= fun prog -> 
+    char ';' >> pure (If prog)
+  in
+  let parse_ident_or_num = 
+    (parse_ident >>= fun id -> pure (Ident id)) <|>
+    (parse_num >>= fun n -> pure (Num n));
+  in
+  choice [
+    parse_def;
+    parse_simple_command;
+    parse_bind;
+    parse_call;
+    parse_if;
+    parse_ident_or_num;
+  ] <|> fail (* TODO *)
 and parse_prog_rec () =
   many ((rec_parser parse_com) << ws)
 
-let parse_prog = assert false (* TODO *)
+let parse_prog s = (* TODO *)
+  match (ws >> many (parse_com () << ws) << ws) (explode s) with
+    | Some (prog, []) -> Some prog
+    | _ -> None
 
-(* A VERY SMALL TEST SET *)
-(*
 let test = parse_prog "drop"
 let out = Some [Drop]
 let _ = assert (test = out)
+(* A VERY SMALL TEST SET *)
 
 let test = parse_prog "     .       "
 let out = Some [Trace]
 let _ = assert (test = out)
+
 
 let test = parse_prog "  |> TEST   "
 let out = Some [Bind "TEST"]
@@ -176,8 +212,6 @@ let out = Some
     ;  Bind "X"
     ]
 let _ = assert (test = out)
-*)
-
 (* EVALUATION *)
 
 type stack = int list
@@ -187,10 +221,114 @@ type value
 type env = (ident * value) list
 type trace = string list
 
-let update_env = assert false (* TODO *)
-let fetch_env = assert false (* TODO *)
-let eval_prog = assert false (* TODO *)
-let interp = assert false (* TODO *)
+let update_env (environment: env) (identifier: ident) (value: value) : env = (* TODO *)
+  let rec update_or_add = function
+    | [] -> [(identifier, value)] 
+    | (id, _) :: xs when id = identifier -> (identifier, value) :: xs  
+    | pair :: xs -> pair :: update_or_add xs 
+  in
+  update_or_add environment
+let fetch_env (environment: env) (identifier: ident) : value option = (* TODO *)
+  let rec find_binding = function
+    | [] -> None 
+    | (id, value) :: _ when id = identifier -> Some value 
+    | _ :: xs -> find_binding xs 
+  in
+  find_binding environment
+
+let rec eval_prog (stack : stack) (env : env) (trace : trace) (prog : program) : trace = (* TODO *)
+  match prog with
+  | [] -> trace 
+  | com :: rest -> match com with
+   
+    | Drop -> (
+      match stack with
+      | _ :: tail -> eval_prog tail env trace rest  
+      | [] -> ["panic: stack underflow"] 
+    )
+    | Swap -> (
+      match stack with
+      | x :: y :: tail -> eval_prog (y :: x :: tail) env trace rest 
+      | _ -> ["panic: stack underflow"]  
+    )
+    | Dup -> (
+      match stack with
+      | x :: tail -> eval_prog (x :: x :: tail) env trace rest 
+      | [] -> ["panic: dup failed due to empty stack"]  
+
+    )
+    | Trace -> (
+      match stack with
+      | x :: tail -> eval_prog tail env ((string_of_int x) :: trace) rest
+      | [] -> ["panic: trace failed due to empty stack"]
+    )
+    | Num n -> (
+      match n with
+      | _ when n < 0 -> eval_prog ((0 - n) :: stack) env trace rest
+      | _ -> eval_prog (n :: stack) env trace rest
+    )
+    | Add -> (
+      match stack with
+      | x :: y :: tail -> eval_prog ((x + y) :: tail) env trace rest
+      | _ -> ["panic: add failed due to insufficient stack size"]
+    )
+    | Sub -> (
+      match stack with
+      | x :: y :: tail -> eval_prog ((x - y) :: tail) env trace rest
+      | _ -> ["panic: subtract failed due to insufficient stack size"]
+    )
+    | Mul -> (
+      match stack with
+      | x :: y :: tail -> eval_prog ((x * y) :: tail) env trace rest  
+      | _ -> ["panic: mul failed due to insufficient stack size"]
+    )
+    | Div -> (
+      match stack with
+      | x :: y :: tail when x <> 0 -> eval_prog ((x / y) :: tail) env trace rest
+      | _ :: y :: tail when y = 0 -> ["panic: division by zero"]
+      | _ -> ["panic: div failed due to insufficient stack size"]
+    )
+    | Lt -> (
+      match stack with
+      | x :: y :: tail -> eval_prog (((if x < y then 1 else 0) :: tail)) env trace rest 
+      | _ -> ["panic: less than failed due to insufficient stack size"] 
+    )
+    | Eq -> (
+      match stack with
+      | x :: y :: tail -> eval_prog (((if x = y then 1 else 0) :: tail)) env trace rest 
+      | _ -> ["panic: less than failed due to insufficient stack size"] 
+    )
+    | Bind ident  -> (
+      match stack with
+      | x :: tail -> 
+          let updated_env = update_env env ident (Num x) 
+          in eval_prog tail updated_env trace rest
+      | [] -> ["panic: variable assignment failed due to empty stack"]
+    )
+    | Ident ident -> (
+      match fetch_env env ident with
+      | Some (Num n) -> eval_prog (n :: stack) env trace rest 
+      | Some (Prog _) -> ["panic: identifier bound to a subroutine, not a number"]
+      | None -> ["panic: identifier not bound in the environment"]
+    )
+    | Def (id, sub_prog) -> 
+      let updated_env = update_env env id (Prog sub_prog) 
+      in eval_prog stack updated_env trace rest  
+    | Call ident -> (
+      match fetch_env env ident with
+      | Some (Prog sub_prog) -> eval_prog stack env trace (sub_prog @ rest) 
+      | _ -> ["panic: subroutine call failed, ID not bound to a program or bound to a number"]
+    )
+    | If sub_prog -> (
+      match stack with
+      | x :: tail when x <> 0 -> eval_prog tail env trace (sub_prog @ rest) 
+      | x :: tail -> eval_prog tail env trace rest 
+      | [] -> ["panic: if-statement failed due to empty stack"]
+    )
+let interp (input : string) : trace option = (* TODO *)
+  match parse_prog input with
+  | Some prog -> Some(eval_prog [] [] [] prog)
+  | _ -> None
 
 (* END OF PROJECT CODE *)
 
@@ -207,7 +345,6 @@ let print_trace t =
       go t
   in go (List.rev t)
 
-(*
 let main () =
   let input =
     let rec get_input s =
@@ -221,5 +358,4 @@ let main () =
   | None -> print_endline "Parse Error"
   | Some t -> print_trace t
 
-let _ = main ()
-*)
+let _ = main () 

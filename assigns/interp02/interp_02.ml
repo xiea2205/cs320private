@@ -183,20 +183,48 @@ let parse_comment =
 let parse_debug =
   char '"' >> many (satisfy ((<>) '"')) << char '"' >|= implode
 
+let parse_const =
+  ws >> 
+  ( (parse_bool >|= fun b -> Const (Bool b))
+    <|>
+    (parse_int >|= fun n -> Const (Num n))
+  ) <<
+  ws
+
 let ws = many (ws >> parse_comment) >> ws
 let keyword w = str w << ws
-
 let rec parse_com () =
-  let parse_fun = fail (* TODO *)
-  in
-  let parse_if =
-    let* _ = keyword "?" in
-    let* ifc = parse_prog_rec () in
-    let* _ = keyword ";" in
-    let* elsec = parse_prog_rec () in
+  let parse_fun =
+    let* _ = char ':' in
+    let* prog = parse_prog_rec () in
     let* _ = char ';' in
-    pure (If (ifc, elsec))
+    pure (Fun prog)
   in
+  let parse_bind = 
+    (keyword "|>" >> parse_ident) >>= fun id -> pure (Bind id) in
+  let parse_simple_command = choice [
+    keyword "." >> pure Trace;
+    keyword "#" >> pure Call;
+    keyword "&&" >> pure And;
+    keyword "~" >> pure Not;
+    keyword "+" >> pure Add;
+    keyword "*" >> pure Mul;
+    keyword "/" >> pure Div;
+    keyword "<" >> pure Lt;
+    keyword "=" >> pure Eq;
+    keyword "Return" >> pure Return;
+  ] in
+  (* TODO *)
+  
+  let parse_if =
+    let* _ = char '?' in
+    let* if_prog = parse_prog_rec () in
+    let* _ = keyword ";" in
+    let* else_prog = parse_prog_rec () in
+    let* _ = keyword ";" in
+    pure (If (if_prog, else_prog))
+  in
+
   let parse_while =
     let* _ = keyword "While" in
     let* check = parse_prog_rec () in
@@ -205,12 +233,18 @@ let rec parse_com () =
     let* _ = char ';' in
     pure (While (check, body))
   in
+
+
+
+  
   choice
     (* TODO: Add more alternatives *)
     [ parse_fun
     ; parse_while
     ; parse_if
     ; parse_ident >|= (fun s -> Fetch s)
+    ; parse_bind
+    ; parse_simple_command
     ; parse_debug >|= (fun s -> Debug s)
     ]
 and parse_prog_rec () =
@@ -221,14 +255,28 @@ let parse_prog = parse (ws >> parse_prog_rec ())
 (* FETCHING AND UPDATING *)
 
 (* fetch the value of `x` in the environment `e` *)
-let fetch_env e x = None (* TODO *)
-
-let rec update_env e x v = Global [] (* TODO *)
-
+let rec fetch_env e x = (* TODO *)
+  match e with
+  | Global bindings -> 
+      List.assoc_opt x bindings  (* Return None if not found *)
+  | Local (record, env) -> 
+      match List.assoc_opt x record.local with
+      | Some value -> Some value
+      | None -> fetch_env env x  (* Continue to next environment in the stack *)
+let rec update_env e x v = (* TODO *)
+  match e with
+  | Global bindings ->
+      Global ((x, v) :: List.remove_assoc x bindings)  (* Add/update binding in global *)
+  | Local (record, env) ->
+      Local ({record with local = (x, v) :: List.remove_assoc x record.local}, env)  (* Update local bindings *)
 (* EVALUTION *)
 
 (* make the panic configuration given a configuration *)
 let panic (_, _, t, _) msg = [], Global [], ("panic: " ^ msg) :: t, []
+let discard_top_env env =
+  match env with
+  | Local (_, env') -> env'  (* Discard topmost local environment *)
+  | Global _ -> failwith "Trying to discard global environment, which should not happen"
 
 let eval_step (c : stack * env * trace * program) =
   match c with
@@ -242,8 +290,84 @@ let eval_step (c : stack * env * trace * program) =
   | _ :: _ :: _, _, _, Add :: _ -> panic c "type error (+ on non-integers)"
   | _ :: [], _, _, Add :: _ -> panic c "stack underflow (+ on single)"
   | [], _, _, Add :: _ -> panic c "stack underflow (+ on empty)"
-  | _ -> assert false (* TODO *)
+  (* Multiply *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Mul :: p -> Const (Num (m * n)) :: s, e, t, p
+  | Const (Num _) :: _ :: _, _, _, Mul :: _ -> panic c "type error (* on non-integer)"
+  | _ :: Const (Num _) :: _, _, _, Mul :: _ -> panic c "type error (* on non-integer)"
+  | _ :: [], _, _, Mul :: _ -> panic c "stack underflow (* on single)"
+  | [], _, _, Mul :: _ -> panic c "stack underflow (* on empty)"
+  (* Divide *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Div :: p when n <> 0 -> Const (Num (m / n)) :: s, e, t, p
+  | Const (Num _) :: Const (Num 0) :: _, _, _, Div :: _ -> panic c "division by zero"
+  | Const (Num _) :: _ :: _, _, _, Div :: _ -> panic c "type error (/ on non-integer)"
+  | _ :: Const (Num _) :: _, _, _, Div :: _ -> panic c "type error (/ on non-integer)"
+  | _ :: [], _, _, Div :: _ -> panic c "stack underflow (/ on single)"
+  | [], _, _, Div :: _ -> panic c "stack underflow (/ on empty)"
+  (* And *)
+  | Const (Bool m) :: Const (Bool n) :: s, e, t, And :: p -> Const (Bool (m && n)) :: s, e, t, p
+  | Const (Bool _) :: _ :: _, _, _, And :: _ -> panic c "type error (&& on non-boolean)"
+  | _ :: Const (Bool _) :: _, _, _, And :: _ -> panic c "type error (&& on non-boolean)"
+  | _ :: [], _, _, And :: _ -> panic c "stack underflow (&& on single)"
+  | [], _, _, And :: _ -> panic c "stack underflow (&& on empty)"
+  (* Or *)
+  | Const (Bool m) :: Const (Bool n) :: s, e, t, Or :: p -> Const (Bool (m || n)) :: s, e, t, p
+  | Const (Bool _) :: _ :: _, _, _, Or :: _ -> panic c "type error (|| on non-boolean)"
+  | _ :: Const (Bool _) :: _, _, _, Or :: _ -> panic c "type error (|| on non-boolean)"
+  | _ :: [], _, _, Or :: _ -> panic c "stack underflow (|| on single)"
+  | [], _, _, Or :: _ -> panic c "stack underflow (|| on empty)"
+  (* Not *)
+  | Const (Bool b) :: s, e, t, Not :: p -> Const (Bool (not b)) :: s, e, t, p
+  | Const _ :: _, _, _, Not :: _ -> panic c "type error (~ on non-boolean)"
+  | [], _, _, Not :: _ -> panic c "stack underflow (~ on empty)"
+  (* Less Than *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Lt :: p -> Const (Bool (n < m)) :: s, e, t, p
+  | Const (Num _) :: _ :: _, _, _, Lt :: _ -> panic c "type error (< on non-integer)"
+  | _ :: Const (Num _) :: _, _, _, Lt :: _ -> panic c "type error (< on non-integer)"
+  | _ :: [], _, _, Lt :: _ -> panic c "stack underflow (< on single)"
+  | [], _, _, Lt :: _ -> panic c "stack underflow (< on empty)"
+  (* Equals *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Eq :: p -> Const (Bool (m = n)) :: s, e, t, p
+  | Const (Num _) :: _ :: _, _, _, Eq :: _ -> panic c "type error (= on non-integer)"
+  | _ :: Const (Num _) :: _, _, _, Eq :: _ -> panic c "type error (= on non-integer)"
+  | _ :: [], _, _, Eq :: _ -> panic c "stack underflow (= on single)"
+  | [], _, _, Eq :: _ -> panic c "stack underflow (= on empty)"
+  (* If-Else *)
+  | Const (Bool true) :: s, e, t, If (q1, _) :: p -> s, e, t, q1 @ p
+  | Const (Bool false) :: s, e, t, If (_, q2) :: p -> s, e, t, q2 @ p
+  | Const _ :: _, _, _, If _ :: _ -> panic c "type error (non-boolean in if)"
+  | [], _, _, If _ :: _ -> panic c "stack underflow (empty stack in if)"
+  (* While *)
+  | s, e, t, While (q1, q2) :: p -> 
+    s, e, t, If (q1 @ [Trace], q2 @ [While (q1, q2)]) :: p
+  (* Fetch *)
+  | s, e, t, Fetch x :: p ->
+    (match fetch_env e x with
+    | Some value -> value :: s, e, t, p
+    | None -> panic c ("unbound identifier " ^ x))
+  (* Assign *)
+  | v :: s, e, t, Bind x :: p -> s, update_env e x v, t, p
+  | [], _, _, Bind x :: _ -> panic c "stack underflow (binding with empty stack)"
+  (* Call *)
+  | Clos { def_id; captured; prog } :: s, e, t, Call :: p -> 
+    let new_record = { id = local_id e + 1; local = captured; called_def_id = def_id; return_prog = p } in
+    [], Local (new_record, e), t, prog
+  (* Return *)
+  | [v], Local (r, env'), t, Return :: p when p = r.return_prog -> 
+      (* Correct case: Returning a value from a function *)
+      [v], env', t, p
+  | [], Local (r, env'), t, Return :: p when p = r.return_prog ->
+      (* Allow returning from a function without a value, when the stack is empty *)
+      [], env', t, p
+  | _, Local (r, env'), t, Return :: p ->
+      (* Incorrect usage of Return or Return with wrong program *)
+      panic c ("Return not matching the return program in the activation record or incorrect use of Return")
 
+  (* ... *)
+
+  (* Handle the cases where Return is used at the global scope or in invalid conditions *)
+  | _, Global _, _, Return :: _ -> 
+      panic c "Global scope cannot process a return"
+  | _ -> panic c "Return not within a function" (* TODO *)
 let rec eval c =
   match c with
   | (_, Global _, t, []) -> t
@@ -276,6 +400,6 @@ let main () =
   | None -> print_endline "Parse Error"
   | Some t -> print_trace t
 
-(* let _ = main () *)
+let _ = main ()
 
 (* END OF FILE *)

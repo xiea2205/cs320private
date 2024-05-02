@@ -1,7 +1,6 @@
 #use "interp_03.ml";;
 
 exception BaseParseError
-
 let print_trace t =
   let rec go t =
     match t with

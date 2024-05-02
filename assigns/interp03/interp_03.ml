@@ -420,7 +420,9 @@ let rec fetch e x =
   | (y, v) :: _ when x = y -> Some v
   | _ :: e -> fetch e x
 
-let panic (s, e, t, p) = ([], [], "panic" :: t, [])
+let panic1 (s, e, t, p) = ([], [], "panic1" :: t, [])
+let panic2 (s, e, t, p) = ([], [], "panic2" :: t, [])
+
 
 let eval_step c =
   match c with
@@ -470,11 +472,11 @@ let eval_step c =
   (* lookup *)
   | s, e, t, Lookup x :: p -> (
       match fetch e x with
-      | None -> panic c
+      | None -> panic1 c
       | Some v -> v :: s, e, t, p
     )
   (* panic *)
-  | _ -> panic c
+  | _ -> panic2 c
 
 let eval_stack_prog p =
   let rec go c =
@@ -510,9 +512,86 @@ type lexpr
   | App of lexpr * lexpr
   | Trace of lexpr
 
-let desugar (p : top_prog) : lexpr = Unit (* TODO *)
-let translate (e : lexpr) : stack_prog = [] (* TODO *)
-let serialize (p : stack_prog) : string = "" (* TODO *)
+let rec desugar_expr (e : expr) : lexpr =
+  match e with
+  | Unit -> Unit
+  | Num n -> Num n
+  | Bool b -> Bool b
+  | Var v -> Var v
+  | Uop (op, exp) -> Uop (op, desugar_expr exp)
+  | Bop (op, exp1, exp2) -> Bop (op, desugar_expr exp1, desugar_expr exp2)
+  | Fun (args, exp) ->
+      List.fold_right (fun arg acc -> Fun (arg, acc)) args (desugar_expr exp)
+  | App (exp1, exp2) -> App (desugar_expr exp1, desugar_expr exp2)
+  | Let (f, args, exp1, exp2) ->
+      App (Fun (f, List.fold_right (fun arg acc -> Fun (arg, acc)) args (desugar_expr exp1)), desugar_expr exp2)
+  | Ife (exp1, exp2, exp3) -> Ife (desugar_expr exp1, desugar_expr exp2, desugar_expr exp3)
+  | Trace exp -> Trace (desugar_expr exp)
+
+let rec desugar (p : top_prog) : lexpr = (* TODO *)
+  match p with
+  | [] -> Unit  (* Base case when no more bindings *)
+  | (f, args, expr) :: rest ->
+      let desugared_rest = desugar rest in
+      let fun_expr = List.fold_right (fun arg acc -> Fun (arg, acc)) args (desugar_expr expr) in
+      App (Fun (f, fun_expr), desugared_rest)
+let rec translate (e : lexpr) : stack_prog =
+  match e with
+  | Num n -> [Push (Num n)]
+  | Bool b -> [Push (Bool b)]
+  | Unit -> [Push Unit]
+  | Var x -> [Lookup x]
+  | Uop (op, e) -> translate e @ (match op with Neg -> [Sub] | Not -> [Add])  (* Simplified *)
+  | Bop (op, e1, e2) ->
+    let op_cmd = match op with
+      | Add -> Add | Sub -> Sub | Mul -> Mul | Div -> Div
+      | And -> Add (* Simplified *) | Or -> Add (* Simplified *)
+      | Lt -> Lt | _ -> Add (* Simplified *)
+    in translate e2 @ translate e1 @ [op_cmd]
+  | Ife (e1, e2, e3) ->
+    translate e1 @ [If (translate e2, translate e3)]
+  | Fun (arg, e) ->
+    [Fun (arg, translate e)]
+  | App (e1, e2) ->
+    translate e1 @ translate e2 @ [Call]
+  | Trace e ->
+    translate e @ [Trace]
+
+let rec serialize_helper sp (p: stack_prog) : string =
+  let indent = String.make (2 * sp) ' ' in
+  String.concat "\n" (List.map (fun cmd -> 
+    match cmd with
+    | Push Bool b -> indent ^ "push " ^ (string_of_bool b)
+    | Push Num n -> indent ^ "push " ^ (string_of_int n)
+    | Push Unit -> indent ^ "push " ^ "unit"
+    | Swap -> indent ^ "swap"
+    | Trace -> indent ^ "trace"
+    | Add -> indent ^ "add"
+    | Sub -> indent ^ "sub"
+    | Mul -> indent ^ "mul"
+    | Div -> indent ^ "div"
+    | Lt -> indent ^ "lt"
+    | If (p1, p2) ->
+        indent ^ "if\n" ^ serialize_helper (sp + 1) p1 ^
+        "\n" ^ indent ^ "else\n" ^ serialize_helper (sp + 1) p2 ^
+        "\n" ^ indent ^ "end"
+    | Fun (id, p) ->
+        (match id with
+        | "_" -> indent ^ "fun " ^ String.uppercase_ascii("A") ^ " begin\n" ^
+        serialize_helper (sp + 1) p ^
+        "\n" ^ indent ^ "end"
+        | _ -> indent ^ "fun " ^ String.uppercase_ascii(id^id) ^ " begin\n" ^
+        serialize_helper (sp + 1) p ^
+        "\n" ^ indent ^ "end")
+    | Call -> indent ^ "call"
+    | Return -> indent ^ "return"
+    | Assign id -> indent ^ "assign " ^ String.uppercase_ascii(id^id)
+    | Lookup id -> indent ^ "lookup " ^ String.uppercase_ascii(id^id)
+  ) p)
+  
+  let serialize (p : stack_prog) : string =  (* TODO *)
+    serialize_helper 0 p
+
 
 let compile (s : string) : string option =
   match parse_top_prog s with
